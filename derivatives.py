@@ -95,7 +95,7 @@ def get_problem_pair(problem_length=(2, 4), answer_length=None):
             break
         elif len(answer.args) <= answer_length:
             break
-    return problem, answer
+    return problem, sp.simplify(answer)
 
 def get_problem_pairs(n, problem_length=(2, 4), answer_length=None):
     problems, answers = [], []

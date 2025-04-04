@@ -1,11 +1,11 @@
 <template>
     <page size="letter|a4">
         <!-- Static elements -->
-        <image path="logo.png" x="6" y="10" width="1.5" height="0.5"/>
+        <image path="assets/logo.png" x="6" y="10" width="1.5" height="0.5"/>
         <text x="1" y="10.5" size="18">Math Worksheet</text>
         <qr content="googl.com" x="7" y="0.5" size="1"/>
 
         <!-- Dynamic grids -->
-        <grid columns="3" cell_width="2.5" cell_height="1.5" spacing="0.3"/>
+        <grid n="1" type="volumes"/>
     </page>
 </template>

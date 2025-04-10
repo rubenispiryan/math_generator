@@ -1,11 +1,13 @@
 <template>
-    <page size="letter|a4">
+    <page size="letter">
         <!-- Static elements -->
-        <image path="assets/logo.png" x="6" y="10" width="1.5" height="0.5"/>
-        <text x="1" y="10.5" size="18">Math Worksheet</text>
-        <qr content="googl.com" x="7" y="0.5" size="1"/>
+        <image path="assets/logo.png" x="1" y="10" width="2.4" height="0.8"/>
+        <qr content="google.com" x="7" y="10" size="1"/>
+        <text x="1" y="9.5" size="20" font="Helvetica-Bold">Derivation</text>
+        <text x="1" y="8.7" size="14">Name _________________________     Date ___________________</text>
+        <text x="1" y="8" size="14">Calculate derivative.</text>
 
         <!-- Dynamic grids -->
-        <grid n="8" type="derivative"/>
+        <grid n="6" type="derivatives" lm="100" tm="250" bm="60"/>
     </page>
 </template>

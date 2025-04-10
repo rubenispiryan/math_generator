@@ -1,3 +1,7 @@
+from multiprocessing import Queue, Process
+
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import sympy as sp
 import numpy as np
@@ -12,26 +16,44 @@ class Volumes:
         self.image_index = 0
         self.a, self.b = None, None
 
-    def get_problem_pairs(self, n, difficulty):
+    def get_problem_pairs(self, n, difficulty, x_range):
         problems = []
         answers = []
         for _ in range(n):
-            p, ans = self.get_problem_pair(difficulty)
+            p, ans = self.get_problem_pair(difficulty, x_range)
             problems.append(p)
             answers.append(ans)
         return problems, answers
 
-    def get_problem_pair(self, difficulty):
-        p = self._get_problem(difficulty)
-        ans = sp.pi * sp.integrate(p ** 2, (self.x, self.a, self.b))
+    def _try_integrate(self, expr, var, queue):
+        try:
+            result = sp.integrate(expr, var)
+            queue.put(result)
+        except Exception as e:
+            queue.put(e)
+
+    def _integrate_with_timeout(self, expr, var, timeout=3):
+        queue = Queue()
+        p = Process(target=self._try_integrate, args=(expr, var, queue))
+        p.start()
+        p.join(timeout)
+        if p.is_alive():
+            p.terminate()
+            return -1
+        else:
+            return queue.get()
+
+    def get_problem_pair(self, difficulty, x_range):
+        p = sp.simplify(self._get_problem(x_range, difficulty))
+        ans = sp.pi * self._integrate_with_timeout(p, (self.x, self.a, self.b))
         self.a, self.b = None, None
         simpl = sp.expand(sp.simplify(ans))
-        if len(simpl.as_ordered_terms()) > 2:
+        if ans == sp.nan or ans == -1 or len(simpl.as_ordered_terms()) > 2:
             self.image_index -= 1
-            return self.get_problem_pair(difficulty)
+            return self.get_problem_pair(difficulty, x_range)
         return p, sp.simplify(ans)
 
-    def _get_problem(self, difficulty='simple'):
+    def _get_problem(self, x_range, difficulty='simple', debug=False):
         if difficulty == 'simple':
             config = {
                 'power_range': (1, 3),
@@ -72,14 +94,17 @@ class Volumes:
             return None
         p = sp.diff(p, self.x)
         try:
-            self._create_graph(p)
+            self._create_graph(p, x_range)
         except Exception as e:
-            print(f'Failed to render equation: {str(e)}')
-            return self._get_problem(difficulty)
+            if debug:
+                print(f'Failed to render equation: {str(e)}')
+            plt.close('all')
+            return self._get_problem(x_range, difficulty)
         return p
 
 
-    def _create_graph(self, f, x_range=(1, 15)):
+    def _create_graph(self, f, x_range, debug=False):
+        ab_range = (1, 15)
         # Convert the symbolic function to a numerical function
         f_lambdified = sp.lambdify(self.x, f, 'numpy')
 
@@ -98,9 +123,10 @@ class Volumes:
         y_vals = y_vals[~mask]  # Remove corresponding y values
 
         try:
-            x_range = np.min(x_vals), np.max(x_vals)
+            x_range = max(ab_range[0], np.min(x_vals)), min(ab_range[1], np.max(x_vals))
         except ValueError:
-            print(f'{x_vals=}')
+            if debug:
+                print(f'{x_vals=}')
             raise
 
 

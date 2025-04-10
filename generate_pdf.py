@@ -1,5 +1,6 @@
 import io
 import os
+import subprocess
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
@@ -9,9 +10,11 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
+from sys import stderr
 from sympy.printing.preview import preview
 import qrcode
 from sympy import Basic
+from sympy.simplify.simplify import bottom_up
 
 from derivatives import Derivative
 from volumes import Volumes
@@ -79,6 +82,8 @@ class XMLTemplateParser:
         }
 
     def _parse_grid_element(self, elem):
+        left = elem.get('x_left', -25)
+        right = elem.get('x_right', 25)
         return {
             'type': 'grid',
             'position': (float(elem.get('x', 0)) * inch,
@@ -90,6 +95,12 @@ class XMLTemplateParser:
             'spacing': float(elem.get('spacing', 0.2)) * inch,
             'n': int(elem.get('n', 9)),
             'grid_type': GridTypes(elem.get('type', None)),
+            'difficulty': elem.get('difficulty', 'simple'),
+            'x_range': (int(left), int(right)),
+            'tm': int(elem.get('tm', 0)),
+            'bm': int(elem.get('bm', 0)),
+            'lm': int(elem.get('lm', 0)),
+            'scale_cap': float(elem.get('scale_cap', 0.6)),
         }
 
 
@@ -111,15 +122,11 @@ class PDFGenerator:
 
     def _process_grid(self, problems, answers):
         if self.grid['grid_type'] == GridTypes.VOLUME:
-            print('there')
             new_problems = []
             for i in range(len(problems)):
-                new_problems.append(problems[i])
                 new_problems.append(f'output/{self.base_name}_{i}.jpg')
-            print(new_problems)
             self._add_math_problems(new_problems)
         elif self.grid['grid_type'] == GridTypes.DERIVATIVE:
-            print('here')
             self._add_math_problems(problems)
         self._add_math_problems(answers)
 
@@ -136,6 +143,7 @@ class PDFGenerator:
         self.c.setFont(element['font'], element['size'])
         self.c.setFillColor(element['color'])
         self.c.drawString(*element['position'], element['content'])
+        self.c.setFont('Helvetica', 12)
 
     def _draw_image(self, element):
         img = ImageReader(element['path'])
@@ -156,12 +164,12 @@ class PDFGenerator:
     def _add_math_problems(self, problems):
         page_width, page_height = self.parser.pagesize
         # Layout configuration
-        left_margin = 50
-        top_margin = 50
-        print(problems)
+        left_margin = self.grid['lm']
+        top_margin = self.grid['tm']
+        bottom_margin = self.grid['bm']
         n = len(problems)
         cell_width = (page_width - 2 * left_margin)
-        cell_height = (page_height - 2 * top_margin) / n
+        cell_height = (page_height - (bottom_margin + top_margin)) / n
         max_image_width = cell_width - 20
         max_image_height = cell_height - 20
         for i, item in enumerate(problems, start=1):
@@ -176,17 +184,15 @@ class PDFGenerator:
             img_width, img_height = img.getSize()
 
             # Calculate scaling factor
-            scale_cap = 0.6
+            scale_cap = self.grid['scale_cap']
             scale = min(scale_cap, min(max_image_width / img_width, max_image_height / img_height))
-            print(f"Current item: {i}, Current scaling: {scale}")
             scaled_width = img_width * scale
             scaled_height = img_height * scale
 
             y = page_height - top_margin - i * cell_height + (cell_height - scaled_height) / 2
 
-            self.c.drawImage(img, 50, y, width=scaled_width, height=scaled_height)
-            if isinstance(item, Basic):
-                self.c.drawString(30, y + 10, f"{i})")  # Numbering
+            self.c.drawImage(img, left_margin, y, width=scaled_width, height=scaled_height)
+            self.c.drawString(left_margin - 20, y + scaled_height / 2, f"{i})")  # Numbering
         self.c.showPage()
 
     def _read_image(self, filename):
@@ -207,20 +213,31 @@ class PDFGenerator:
             raise RuntimeError(f"Failed to render equation: {str(e)}") from e
         return buffer
 
+    def get_problem_pairs(self):
+        if self.grid['grid_type'] == GridTypes.VOLUME:
+            vol = Volumes('volumes')
+            p, ans = vol.get_problem_pairs(generator.grid['n'], generator.grid['difficulty'], generator.grid['x_range'])
+        elif self.grid['grid_type'] == GridTypes.DERIVATIVE:
+            dv = Derivative()
+            p, ans = dv.get_problem_pairs(generator.grid['n'], (4, 4), 4)
+        else:
+            print('Invalid problem type:', self.grid['grid_type'], file=stderr)
+            exit(1)
+        return p, ans
+
+    def clean(self):
+        subprocess.run('rm output/volumes_*.jpg 2>/dev/null', shell=True)
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print(f"Usage: {sys.argv[0]} <problems-type>")
+        print(f"Usage: {sys.argv[0]} <problems-type>.xml")
         sys.exit(1)
-    problem_type = sys.argv[1]
-    if problem_type == 'derivatives':
-        generator = PDFGenerator('templates/derivatives.xml')
-        dv = Derivative()
-        p, ans = dv.get_problem_pairs(generator.grid['n'], (4, 4), 2)
-        generator.generate_pdf(p, ans)
-    elif problem_type == 'volumes':
-        generator = PDFGenerator('templates/volumes.xml')
-        vol = Volumes('volumes')
-        p, ans = vol.get_problem_pairs(2, 'simple')
-        print(p, ans)
-        generator.generate_pdf(p, ans)
+    problem_template = sys.argv[1]
+    if not problem_template.endswith('.xml'):
+        print(f"Usage: {sys.argv[0]} <problems-type>.xml")
+        sys.exit(1)
+    generator = PDFGenerator(problem_template)
+    p, ans = generator.get_problem_pairs()
+    generator.generate_pdf(p, ans)
+    generator.clean()

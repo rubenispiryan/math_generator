@@ -14,7 +14,6 @@ from sys import stderr
 from sympy.printing.preview import preview
 import qrcode
 from sympy import Basic
-from sympy.simplify.simplify import bottom_up
 
 from derivatives import Derivative
 from volumes import Volumes
@@ -28,28 +27,44 @@ class XMLTemplateParser:
     def __init__(self, xml_file):
         self.tree = ET.parse(xml_file)
         self.root = self.tree.getroot()
-        self.pagesize = self._get_pagesize()
+
+    def parse_document(self):
+        document: dict = self._parse_document()
+        document['pages'] = self._parse_pages()
+        document['grid'] = self._parse_grid_element(self.root.find('grid'))
+        return document
+
+    def _parse_document(self):
+        return {
+            'size': self._get_pagesize(),
+            'meta_title': self.root.get('meta_title', 'Untitled'),
+            'name': self.root.get('name', None),
+        }
 
     def _get_pagesize(self):
-        size = self.root.find('page').get('size', 'letter').lower()
+        size = self.root.get('size', 'letter').lower()
         return {
             'letter': letter,
             'a4': (595.27, 841.89)
         }.get(size, letter)
 
-    def parse_elements(self):
-        elements = []
-        grid = None
-        for elem in self.root.iter():
-            if elem.tag == 'text':
-                elements.append(self._parse_text_element(elem))
-            elif elem.tag == 'image':
-                elements.append(self._parse_image_element(elem))
-            elif elem.tag == 'qr':
-                elements.append(self._parse_qr_element(elem))
-            elif elem.tag == 'grid':
-                grid = self._parse_grid_element(elem)
-        return elements, grid
+    def _parse_pages(self):
+        pages = []
+        for page_elem in self.root.findall('page'):
+            elements = []
+            for elem in page_elem:
+                if elem.tag == 'text':
+                    elements.append(self._parse_text_element(elem))
+                elif elem.tag == 'image':
+                    elements.append(self._parse_image_element(elem))
+                elif elem.tag == 'qr':
+                    elements.append(self._parse_qr_element(elem))
+            pages.append(self._parse_page_element(page_elem))
+            pages[-1]['elements'] = elements
+        return pages
+
+    def _parse_page_element(self, page_elem):
+        return {}
 
     def _parse_text_element(self, elem):
         return {
@@ -59,7 +74,8 @@ class XMLTemplateParser:
                          float(elem.get('y', 0)) * inch),
             'font': elem.get('font', 'Helvetica'),
             'size': int(elem.get('size', 12)),
-            'color': elem.get('color', '#000000')
+            'color': elem.get('color', '#000000'),
+            'link': elem.get('link', None),
         }
 
     def _parse_image_element(self, elem):
@@ -109,18 +125,35 @@ class PDFGenerator:
         self.c = None
         self.base_name = os.path.splitext(os.path.basename(template_file))[0]
         self.parser = XMLTemplateParser(template_file)
-        self.elements, self.grid = self.parser.parse_elements()
+        self.document = self.parser.parse_document()
+        self.pages: list | None = self.document.get('pages')
+        self.grid: dict | None = self.document.get('grid')
 
-    def generate_pdf(self, problems, answers, filename=None):
-        if filename is None:
-            filename = 'output/' + self.base_name + '.pdf'
-        self.c = canvas.Canvas(filename, pagesize=self.parser.pagesize)
-        self._add_static_elements()
-        if self.grid is not None:
-            self._process_grid(problems, answers)
+    def generate_pdf(self, problems, answers):
+        if self.document['name'] is None:
+            self.document['name'] = 'output/' + self.base_name + '.pdf'
+        else:
+            self.document['name'] = 'output/' + self.document['name'] + '.pdf'
+        self.c = canvas.Canvas(self.document['name'])
+        self.c.setPageSize(self.document['size'])
+        self.c.setTitle(self.document['meta_title'])
+        self._process_problems_page(self.pages[0], problems)
+        self._process_problems_page(self.pages[1], answers)
         self.c.save()
 
-    def _process_grid(self, problems, answers):
+    def _process_problems_page(self, page, problems):
+        self._add_static_elements(page)
+        if self.grid is not None:
+            self._process_grid_problems(problems)
+        self.c.showPage()
+
+    def _process_answers_page(self, answers):
+        self._add_static_elements(answers)
+        if self.grid is not None:
+            self._process_grid_answers(answers)
+        self.c.showPage()
+
+    def _process_grid_problems(self, problems):
         if self.grid['grid_type'] == GridTypes.VOLUME:
             new_problems = []
             for i in range(len(problems)):
@@ -128,10 +161,12 @@ class PDFGenerator:
             self._add_math_problems(new_problems)
         elif self.grid['grid_type'] == GridTypes.DERIVATIVE:
             self._add_math_problems(problems)
+
+    def _process_grid_answers(self, answers):
         self._add_math_problems(answers)
 
-    def _add_static_elements(self):
-        for element in self.elements:
+    def _add_static_elements(self, page):
+        for element in page['elements']:
             if element['type'] == 'text':
                 self._draw_text(element)
             elif element['type'] == 'image':
@@ -142,8 +177,17 @@ class PDFGenerator:
     def _draw_text(self, element):
         self.c.setFont(element['font'], element['size'])
         self.c.setFillColor(element['color'])
-        self.c.drawString(*element['position'], element['content'])
+        x, y = element['position']
+        text = element['content']
+        self.c.drawString(x, y, text)
         self.c.setFont('Helvetica', 12)
+        if element['link'] is not None:
+            text_width = self.c.stringWidth(text, element['font'], element['size'])
+            self.c.linkURL(
+                element['link'],
+                (x, y, x + text_width, y + element['size']),
+                relative=0
+            )
 
     def _draw_image(self, element):
         img = ImageReader(element['path'])
@@ -162,7 +206,7 @@ class PDFGenerator:
         os.unlink(f.name)
 
     def _add_math_problems(self, problems):
-        page_width, page_height = self.parser.pagesize
+        page_width, page_height = self.document['size']
         # Layout configuration
         left_margin = self.grid['lm']
         top_margin = self.grid['tm']
@@ -193,7 +237,6 @@ class PDFGenerator:
 
             self.c.drawImage(img, left_margin, y, width=scaled_width, height=scaled_height)
             self.c.drawString(left_margin - 20, y + scaled_height / 2, f"{i})")  # Numbering
-        self.c.showPage()
 
     def _read_image(self, filename):
         with open(filename, 'rb') as f:

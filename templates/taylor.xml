@@ -1,0 +1,17 @@
+<document size="letter" meta_title="Taylor">
+    <!-- Static elements -->
+    <page>
+        <image path="assets/logo.png" x="1" y="10" width="2.4" height="0.8"/>
+        <qr content="google.com" x="7" y="10" size="1"/>
+        <text x="1" y="9.5" size="20" font="Helvetica-Bold">Taylor Series</text>
+        <text x="1" y="8.7" size="14">Name _________________________     Date ___________________</text>
+        <text x="1" y="8" size="14">Give the first two Taylor series terms centered around 1</text>
+    </page>
+    <page>
+        <text x="1" y="9.5" size="20" font="Helvetica-Bold">Answers</text>
+        <text x="1" y="0.5" size="14" font="Helvetica-Oblique"
+              link="google.com"> Link to Google.com </text>
+    </page>
+    <!-- Dynamic grids -->
+    <grid n="6" a="1" type="taylor" x_left="-10" x_right="20" lm="100" tm="250" bm="60"/>
+</document>

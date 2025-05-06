@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import sympy as sp
 import numpy as np
 
-from generator import ExpressionGenerator
+from src.generator import ExpressionGenerator
 
 class Volumes:
     def __init__(self, filename):
@@ -160,7 +160,7 @@ class Volumes:
         plt.legend(fontsize=14)
 
         # Save the plot as an image file (e.g., 'function_graph.png')
-        plt.savefig(f'output/{self.filename}_{self.image_index}.jpg',
+        plt.savefig(f'../output/{self.filename}_{self.image_index}.jpg',
                     format='jpg', bbox_inches='tight')
         self.image_index += 1
 
@@ -169,6 +169,6 @@ class Volumes:
 
 if __name__ == "__main__":
     vols = Volumes('templates/volumes.xml')
-    vols.get_problem_pair('extreme')
-    vols.get_problem_pair('hard')
-    vols.get_problem_pair('simple')
+    vols.get_problem_pair('extreme', (1, 15))
+    vols.get_problem_pair('hard', (1, 15))
+    vols.get_problem_pair('simple', (1, 15))

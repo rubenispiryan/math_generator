@@ -1,6 +1,6 @@
 import sympy as sp
 
-from generator import ExpressionGenerator
+from src.generator import ExpressionGenerator
 
 
 class Derivative:

@@ -1,0 +1,16 @@
+chardet==5.2.0
+contourpy==1.3.1
+cycler==0.12.1
+fonttools==4.56.0
+kiwisolver==1.4.8
+matplotlib==3.10.1
+mpmath==1.3.0
+numpy==2.2.4
+packaging==24.2
+pillow==11.1.0
+pyparsing==3.2.3
+python-dateutil==2.9.0.post0
+qrcode==8.0
+reportlab==4.3.1
+six==1.17.0
+sympy==1.13.3

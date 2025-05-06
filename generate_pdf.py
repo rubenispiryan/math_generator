@@ -15,13 +15,17 @@ from sympy.printing.preview import preview
 import qrcode
 from sympy import Basic
 
-from derivatives import Derivative
-from volumes import Volumes
+from src.derivatives import Derivative
+from src.game_theory import Game2x2
+from src.taylor import TaylorSeries
+from src.volumes import Volumes
 
 
 class GridTypes(Enum):
     VOLUME = 'volumes'
     DERIVATIVE = 'derivatives'
+    TAYLOR = 'taylor'
+    NASH = 'nash'
 
 class XMLTemplateParser:
     def __init__(self, xml_file):
@@ -59,6 +63,8 @@ class XMLTemplateParser:
                     elements.append(self._parse_image_element(elem))
                 elif elem.tag == 'qr':
                     elements.append(self._parse_qr_element(elem))
+                elif elem.tag == 'answer':
+                    elements.append(self._parse_answer_element(elem))
             pages.append(self._parse_page_element(page_elem))
             pages[-1]['elements'] = elements
         return pages
@@ -76,6 +82,19 @@ class XMLTemplateParser:
             'size': int(elem.get('size', 12)),
             'color': elem.get('color', '#000000'),
             'link': elem.get('link', None),
+        }
+
+    def _parse_answer_element(self, elem):
+        return {
+            'type': 'answer',
+            'content': elem.text,
+            'position': (float(elem.get('x', 0)) * inch,
+                         float(elem.get('y', 0)) * inch),
+            'font': elem.get('font', 'Helvetica'),
+            'size': int(elem.get('size', 12)),
+            'color': elem.get('color', '#000000'),
+            'link': elem.get('link', None),
+            'answer_margin': elem.get('answer_margin', 0.5),
         }
 
     def _parse_image_element(self, elem):
@@ -110,6 +129,7 @@ class XMLTemplateParser:
             'cell_height': float(elem.get('cell_height', 1)) * inch,
             'spacing': float(elem.get('spacing', 0.2)) * inch,
             'n': int(elem.get('n', 9)),
+            'a': float(elem.get('a', 1)),
             'grid_type': GridTypes(elem.get('type', None)),
             'difficulty': elem.get('difficulty', 'simple'),
             'x_range': (int(left), int(right)),
@@ -128,6 +148,16 @@ class PDFGenerator:
         self.document = self.parser.parse_document()
         self.pages: list | None = self.document.get('pages')
         self.grid: dict | None = self.document.get('grid')
+        self.game_2x2 = None
+        self.answer_places = self._get_answers(self.pages)
+
+    def _get_answers(self, pages):
+        answers = []
+        for page in pages:
+            for elem in page['elements']:
+                if elem['type'] == 'answer':
+                    answers.append(elem)
+        return answers
 
     def generate_pdf(self, problems, answers):
         if self.document['name'] is None:
@@ -138,7 +168,7 @@ class PDFGenerator:
         self.c.setPageSize(self.document['size'])
         self.c.setTitle(self.document['meta_title'])
         self._process_problems_page(self.pages[0], problems)
-        self._process_problems_page(self.pages[1], answers)
+        self._process_answers_page(self.pages[1], answers)
         self.c.save()
 
     def _process_problems_page(self, page, problems):
@@ -147,22 +177,37 @@ class PDFGenerator:
             self._process_grid_problems(problems)
         self.c.showPage()
 
-    def _process_answers_page(self, answers):
-        self._add_static_elements(answers)
+    def _process_answers_page(self, page, answers):
+        self._add_static_elements(page)
         if self.grid is not None:
             self._process_grid_answers(answers)
         self.c.showPage()
 
     def _process_grid_problems(self, problems):
+        assert len(GridTypes) == 4
+        if self.grid['grid_type'] == GridTypes.NASH:
+            lm = self.grid['lm'] + 55
+            tm = self.grid['tm']
+            bm = self.grid['bm'] + 400
+            p1 = 'Taxpayer'
+            p2 = 'Auditor'
+            self.game_2x2 = Game2x2(p1, p2)
+            self._draw_grid(lm, tm, bm, f'{p1}/{p2}',
+                            ['Audit', 'Neglect'], ['Declare', 'Cheat'], self.game_2x2.matrix)
+            return
         if self.grid['grid_type'] == GridTypes.VOLUME:
             new_problems = []
             for i in range(len(problems)):
                 new_problems.append(f'output/{self.base_name}_{i}.jpg')
-            self._add_math_problems(new_problems)
-        elif self.grid['grid_type'] == GridTypes.DERIVATIVE:
-            self._add_math_problems(problems)
+            problems = new_problems
+        self._add_math_problems(problems)
 
     def _process_grid_answers(self, answers):
+        if self.grid['grid_type'] == GridTypes.NASH:
+            pure = self.game_2x2.get_pure_nash_equilibria()
+            mixed = self.game_2x2.get_mixed_strategy_nash()
+            self._draw_nash_answers([pure, mixed])
+            return
         self._add_math_problems(answers)
 
     def _add_static_elements(self, page):
@@ -179,7 +224,7 @@ class PDFGenerator:
         self.c.setFillColor(element['color'])
         x, y = element['position']
         text = element['content']
-        self.c.drawString(x, y, text)
+        self.c.drawString(x, y, str(text))
         self.c.setFont('Helvetica', 12)
         if element['link'] is not None:
             text_width = self.c.stringWidth(text, element['font'], element['size'])
@@ -204,6 +249,68 @@ class PDFGenerator:
                              width=element['size'],
                              height=element['size'])
         os.unlink(f.name)
+
+
+    def _draw_grid(self, left_margin, top_margin, bottom_margin, title,
+                   col_labels, row_labels, data, n = 3):
+        page_width, page_height = self.document['size']
+        grid_width = page_width - 2 * left_margin
+        grid_height = page_height - top_margin - bottom_margin
+        cell_width = grid_width / n
+        cell_height = grid_height / n
+        x_start = left_margin
+        y_start = bottom_margin
+
+        # Draw horizontal lines
+        for row in range(n + 1):
+            y = y_start + row * cell_height
+            self.c.line(x_start, y, x_start + grid_width, y)
+
+        # Draw vertical lines
+        for col in range(n + 1):
+            x = x_start + col * cell_width
+            self.c.line(x, y_start, x, y_start + grid_height)
+
+        if title:
+            x = x_start + 5
+            y = y_start + (n - 0.5) * cell_height
+            self.c.drawString(x, y, title)
+
+        # Insert text into first row (columns 2..n)
+        if col_labels:
+            assert(len(col_labels) == n - 1)
+            for j, label in enumerate(col_labels, start=1):
+                x = x_start + j * cell_width + 5
+                y = y_start + (n - 0.5) * cell_height
+                self.c.drawString(x, y, str(label))
+
+        # Insert text into first column (rows 2..n)
+        if row_labels:
+            assert (len(row_labels) == n - 1)
+            for i, label in enumerate(row_labels, start=1):
+                x = x_start + 5
+                y = y_start + (n - i - 0.5) * cell_height
+                self.c.drawString(x, y, str(label))
+
+        # Insert data into the grid
+        if data:
+            for i in range(len(data)):
+                for j in range(len(data[i])):
+                    x = x_start + (j + 1) * cell_width + 5
+                    y = y_start + (n - i - 1.5) * cell_height
+                    self.c.drawString(x, y, str(data[i][j]))
+
+    def _draw_nash_answers(self, answers):
+        assert len(self.answer_places) >= 2, 'Two answer tags required for this problem'
+        assert len(answers) == 2, 'Two answers required for nash problem'
+        for i in range(len(answers)):
+            answer = answers[i]
+            answer_element = self.answer_places[i]
+            self._draw_text(answer_element)
+            answer_element['content'] = answer if answer is not None and len(answer) > 0 else 'Does not exist'
+            x, y = answer_element['position']
+            answer_element['position'] = (x + 20, y - answer_element['answer_margin'] * inch)
+            self._draw_text(answer_element)
 
     def _add_math_problems(self, problems):
         page_width, page_height = self.document['size']
@@ -257,12 +364,18 @@ class PDFGenerator:
         return buffer
 
     def get_problem_pairs(self):
+        assert len(GridTypes) == 4
         if self.grid['grid_type'] == GridTypes.VOLUME:
             vol = Volumes('volumes')
             p, ans = vol.get_problem_pairs(generator.grid['n'], generator.grid['difficulty'], generator.grid['x_range'])
         elif self.grid['grid_type'] == GridTypes.DERIVATIVE:
             dv = Derivative()
             p, ans = dv.get_problem_pairs(generator.grid['n'], (4, 4), 4)
+        elif self.grid['grid_type'] == GridTypes.TAYLOR:
+            tay = TaylorSeries()
+            p, ans = tay.get_problem_pairs(generator.grid['n'], (1, 2), generator.grid['a'])
+        elif self.grid['grid_type'] == GridTypes.NASH:
+            p, ans = 0, 0
         else:
             print('Invalid problem type:', self.grid['grid_type'], file=stderr)
             exit(1)

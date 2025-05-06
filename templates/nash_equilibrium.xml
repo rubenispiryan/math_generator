@@ -1,0 +1,20 @@
+<document size="letter" meta_title="Game Theory">
+    <!-- Static elements -->
+    <page>
+        <image path="assets/logo.png" x="1" y="10" width="2.4" height="0.8"/>
+        <qr content="google.com" x="7" y="10" size="1"/>
+        <text x="1" y="9.5" size="20" font="Helvetica-Bold">Nash Equilibrium</text>
+        <text x="1" y="8.7" size="14">Name _________________________     Date ___________________</text>
+        <text x="1" y="5.5" size="14"> a) Find a pure strategy nash equilibrium if one exists. </text>
+        <text x="1" y="4" size="14"> b) Find a mixed strategy nash equilibrium if one exists. </text>
+    </page>
+    <page>
+        <text x="1" y="9.5" size="20" font="Helvetica-Bold">Answers</text>
+        <answer x="1" y="7.5" size="14"> Answer for part a). </answer>
+        <answer x="1" y="6" size="14"> Answer for part b). </answer>
+        <text x="1" y="0.5" size="14" font="Helvetica-Oblique"
+              link="google.com"> Link to Google.com </text>
+    </page>
+    <!-- Dynamic grids -->
+    <grid type="nash" x_left="-10" x_right="20" lm="100" tm="250" bm="60"/>
+</document>

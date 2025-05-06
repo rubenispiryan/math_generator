@@ -15,6 +15,11 @@ This project generates printable PDF worksheets for math problems such as deriva
 
 ### 1. Usage
 
+*Requirements:* `All packages in requirements.txt must be present`
+```bash
+pip install -r requirements.txt
+```
+
 Use the CLI to generate the PDF from the template:
 
 ```bash
@@ -71,14 +76,19 @@ the second `page` is the page of answers.
     - `font` (optional): Font name (e.g., `Helvetica-Bold`).
     - `link` (optional): Must be a URL, makes the text clickable.
   - Content: The text to render.
+
+- `<answer>`: Acts identical to `<text>` but is used as a locator for answer places. Must be placed on the answer page.
+  - Attributes:
+    - All attributes present for `<text>`.
+    - `answer_margin`: Margin of the answer from the text.
 ---
 
 ### 4. Dynamic Elements
 
 - `<grid>`: Inserts a grid of problems.
   - Attributes:
-    - `n`: Number of problems to generate.
-    - `type`: Type of problem. Supported types: `derivatives`, `volumes`.
+    - `n`: Number of problems to generate (Not Applicable Problems: Nash).
+    - `type`: Type of problem. Supported types: `derivatives`, `volumes`, `taylor`, `nash`.
     - `difficulty` (optional): For volume problems **ONLY**, set difficulty level.
       - Options: simple, hard, extreme (simple is recommended to get nice graphs)
     - `x_left`, `x_right` (optional): For volume problems, define the region of the graph.
@@ -88,3 +98,9 @@ the second `page` is the page of answers.
 
 ---
 
+### 5. Problem Types
+
+- `derivatives` - Generates `n` functions with their derivatives as answers.
+- `volumes` - Generates `n` curves with graphs and their rotational volume as answers.
+- `taylor` - Generates `n` functions with their 2-Taylor expansions around 1 as answers.
+- `nash` - Generates 1 `2x2` table with a game theory problem, with pure and mixed nash equilibrium answers.

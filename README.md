@@ -10,6 +10,7 @@ This project generates printable PDF worksheets for math problems such as deriva
 - `templates/`: Directory containing XML templates
 - `assets/`: Folder for static resources (e.g., `logo.png`)
 - `output/`: Folder where the generated PDFs are saved
+- `src/`: Folder where source code is located
 
 ---
 

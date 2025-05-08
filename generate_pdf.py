@@ -6,14 +6,15 @@ import tempfile
 import xml.etree.ElementTree as ET
 from enum import Enum
 
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from sys import stderr
-from sympy.printing.preview import preview
 import qrcode
-from sympy import Basic
+from sympy import Basic, latex
 
 from src.derivatives import Derivative
 from src.game_theory import Game2x2
@@ -350,17 +351,36 @@ class PDFGenerator:
             return io.BytesIO(f.read())
 
     def _render_expression(self, expr):
-        buffer = io.BytesIO()
+        latex_str = f"${latex(expr)}$"
+        dpi = 200
+        fontsize = 16
 
-        # Calculate complexity factor based on expression size
-        complexity = len(str(expr))  # Simple complexity metric
-        font_size = max(12, 16 - complexity // 4)  # Adjust font size based on complexity
-        # Generate LaTeX and process in temporary directory
-        try:
-            preview(expr, output='png', viewer='BytesIO', outputbuffer=buffer,
-                    dvioptions=['-D', '300', '-T', 'tight'], fontsize=font_size, euler=False)
-        except Exception as e:
-            raise RuntimeError(f"Failed to render equation: {str(e)}") from e
+        # Step 1: Create initial figure to measure size
+        fig = Figure(figsize=(4, 1), dpi=dpi)
+        canvas = FigureCanvas(fig)
+        ax = fig.add_subplot(111)
+        ax.axis("off")
+        text = ax.text(0, 0, latex_str, fontsize=fontsize)
+
+        # Step 2: Draw and measure bounding box
+        canvas.draw()
+        renderer = canvas.get_renderer()
+        bbox = text.get_window_extent(renderer=renderer)
+
+        width_in = (bbox.width + 10) / dpi  # Add padding
+        height_in = (bbox.height + 10) / dpi
+
+        # Step 3: Create final figure with correct size
+        fig = Figure(figsize=(width_in, height_in), dpi=dpi)
+        canvas = FigureCanvas(fig)
+        ax = fig.add_axes([0, 0, 1, 1])
+        ax.axis("off")
+        ax.text(0.5, 0.5, latex_str, fontsize=fontsize, ha="center", va="center")
+
+        # Step 4: Render to PNG in memory
+        buffer = io.BytesIO()
+        canvas.print_png(buffer)
+        buffer.seek(0)
         return buffer
 
     def get_problem_pairs(self):

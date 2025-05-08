@@ -1,0 +1,4 @@
+python3 generate_pdf.py templates/nash_equilibrium.xml
+python3 generate_pdf.py templates/volumes.xml
+python3 generate_pdf.py templates/taylor.xml
+python3 generate_pdf.py templates/derivatives.xml

@@ -6,7 +6,6 @@ class Game2x2:
         self.p2 = player2
         self.matrix = [[(random.randint(0, 10), random.randint(0, 10))
                                  for _ in range(2)] for _ in range(2)]
-        self.matrix = [[(10, 9), (0, 10)], [(2, 8), (10, 5)]]
 
     def _pure_nash_equilibria(self):
         p1_br = []

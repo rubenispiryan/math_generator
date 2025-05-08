@@ -39,19 +39,35 @@ class Volumes:
         p.join(timeout)
         if p.is_alive():
             p.terminate()
+            p.join()
             return -1
         else:
-            return queue.get()
+            result = queue.get()
+            return result if not isinstance(result, Exception) else -1
 
     def get_problem_pair(self, difficulty, x_range):
-        p = sp.simplify(self._get_problem(x_range, difficulty))
-        ans = sp.pi * self._integrate_with_timeout(p, (self.x, self.a, self.b))
-        self.a, self.b = None, None
-        simpl = sp.expand(sp.simplify(ans))
-        if ans == sp.nan or ans == -1 or len(simpl.as_ordered_terms()) > 2:
-            self.image_index -= 1
-            return self.get_problem_pair(difficulty, x_range)
-        return p, sp.simplify(ans)
+        max_attempts = 20
+        for _ in range(max_attempts):
+            p = sp.simplify(self._get_problem(x_range, difficulty))
+            integral_result = self._integrate_with_timeout(p, (self.x, self.a, self.b))
+
+            # Check for failed integration
+            if integral_result == -1 or isinstance(integral_result, Exception):
+                self.image_index -= 1
+                continue
+
+            ans = sp.pi * integral_result
+            self.a, self.b = None, None
+            simpl = sp.expand(sp.simplify(ans))
+
+            # Check for invalid answer
+            if ans == sp.nan or len(simpl.as_ordered_terms()) > 2:
+                self.image_index -= 1
+                continue
+
+            return p, sp.simplify(ans)
+
+        raise RuntimeError("Failed to generate valid problem after multiple attempts")
 
     def _get_problem(self, x_range, difficulty='simple', debug=False):
         if difficulty == 'simple':
@@ -160,7 +176,7 @@ class Volumes:
         plt.legend(fontsize=14)
 
         # Save the plot as an image file (e.g., 'function_graph.png')
-        plt.savefig(f'../output/{self.filename}_{self.image_index}.jpg',
+        plt.savefig(f'./output/{self.filename}_{self.image_index}.jpg',
                     format='jpg', bbox_inches='tight')
         self.image_index += 1
 

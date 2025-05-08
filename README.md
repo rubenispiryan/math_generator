@@ -105,3 +105,24 @@ the second `page` is the page of answers.
 - `volumes` - Generates `n` curves with graphs and their rotational volume as answers.
 - `taylor` - Generates `n` functions with their 2-Taylor expansions around 1 as answers.
 - `nash` - Generates 1 `2x2` table with a game theory problem, with pure and mixed nash equilibrium answers.
+
+### 6. Benchmark Usage
+
+#### Usage
+
+```bash
+./benchmark.sh <commands_file> <num_runs>
+```
+
+* `<commands_file>`: A text file with one shell command per line.
+* `<num_runs>`: Number of times to run each command.
+
+#### Output
+
+For each command, the script prints:
+
+* **Average time**
+* **Minimum time**
+* **Maximum time**
+* **Standard deviation**
+````

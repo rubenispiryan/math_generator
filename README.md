@@ -121,8 +121,7 @@ the second `page` is the page of answers.
 
 For each command, the script prints:
 
-* **Average time**
-* **Minimum time**
-* **Maximum time**
-* **Standard deviation**
-````
+* Average time
+* Minimum time
+* Maximum time
+* Standard deviation

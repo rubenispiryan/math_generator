@@ -5,6 +5,8 @@ import sys
 import tempfile
 import xml.etree.ElementTree as ET
 from enum import Enum
+import random
+import numpy as np
 
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
@@ -40,10 +42,17 @@ class XMLTemplateParser:
         return document
 
     def _parse_document(self):
+        seed = self.root.get('seed')
+        if seed is not None:
+            seed = int(seed)
+            random.seed(seed)
+            np.random.seed(seed)
+            
         return {
             'size': self._get_pagesize(),
             'meta_title': self.root.get('meta_title', 'Untitled'),
             'name': self.root.get('name', None),
+            'seed': seed
         }
 
     def _get_pagesize(self):

@@ -54,6 +54,7 @@ the second `page` is the page of answers.
     - `size` (optional): either `letter` or `a4`
     - `meta_title` (optional): the title embedded in the PDF metadata
     - `name` (optional): the output PDF filename (without `.pdf` extension)
+    - `seed` (optional): sets the random seed of the current worksheet
 
 - `<image>`: Places an image on the page.
 

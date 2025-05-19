@@ -1,117 +1,119 @@
+from typing import List, Callable, Optional, Union
 import sympy as sp
 from random import uniform, randint, choice
+from .config import GeneratorConfig
 
 class ExpressionGenerator:
-    DEFAULT_CONFIG = {
-        'p_trig': (0.3, 0.5, 0.7, 0.9),
-        'p_hyper_trig': (0.3, 0.5, 0.7),
-        'p_exponent': 0.9,
-        'p_log': 0.98,
-        'p_root': 0.7,
-        'p_compose': 0.3,
-        'exp_range': (2, 5),
-        'log_base_range': (2, 5),
-        'root_degree_range': (3, 5),
-        'coeff_range': (1, 5),
-        'power_range': (0, 5),
-        'function_choice': None
-    }
-    
-    def __init__(self, symbol: sp.Symbol, config=None):
+    def __init__(self, symbol: sp.Symbol, config: Optional[GeneratorConfig] = None):
         self._symbol = symbol
         self.symbol = symbol
+        self.config = config or GeneratorConfig()
+        
+        # Initialize default functions if not provided
+        if not self.config.function_choice:
+            self.config.function_choice = [
+                self.make_poly,
+                self.make_exponent,
+                self.make_log,
+                self.make_root,
+                self.make_reciprocal,
+                self.make_trig,
+                self.make_hyper_trig,
+            ]
 
-        self.default_functions = [
-            self.make_poly,
-            self.make_exponent,
-            self.make_log,
-            self.make_root,
-            self.make_reciprocal,
-            self.make_trig,
-            self.make_hyper_trig,
-        ]
-        self.config = {**self.DEFAULT_CONFIG, **(config or {}),
-                       'function_choice': self.default_functions}
+    def update_config(self, new_config: dict) -> None:
+        """Update the generator configuration with new values."""
+        for key, value in new_config.items():
+            if hasattr(self.config, key):
+                setattr(self.config, key, value)
 
-    def update_config(self, new_config):
-        self.config.update(new_config)
-
-    def make_trig(self):
+    def make_trig(self) -> None:
+        """Apply a trigonometric function to the current symbol."""
         prob = uniform(0, 1)
-        if prob < self.config['p_trig'][0]:
+        if prob < self.config.p_trig[0]:
             self._symbol = sp.sin(self._symbol)
-        elif prob < self.config['p_trig'][1]:
+        elif prob < self.config.p_trig[1]:
             self._symbol = sp.cos(self._symbol)
-        elif prob < self.config['p_trig'][2]:
+        elif prob < self.config.p_trig[2]:
             self._symbol = sp.tan(self._symbol)
-        elif prob < self.config['p_trig'][3]:
+        elif prob < self.config.p_trig[3]:
             self._symbol = sp.sec(self._symbol)
         else:
             self._symbol = sp.cot(self._symbol)
 
-    def make_hyper_trig(self):
+    def make_hyper_trig(self) -> None:
+        """Apply a hyperbolic trigonometric function to the current symbol."""
         prob = uniform(0, 1)
-        if prob < self.config['p_hyper_trig'][0]:
+        if prob < self.config.p_hyper_trig[0]:
             self._symbol = sp.sinh(self._symbol)
-        elif prob < self.config['p_hyper_trig'][1]:
+        elif prob < self.config.p_hyper_trig[1]:
             self._symbol = sp.cosh(self._symbol)
-        elif prob < self.config['p_hyper_trig'][2]:
+        elif prob < self.config.p_hyper_trig[2]:
             self._symbol = sp.tanh(self._symbol)
         else:
             self._symbol = sp.sech(self._symbol)
 
-    def make_poly(self):
+    def make_poly(self) -> None:
+        """Keep the current symbol as a polynomial term."""
         self._symbol = self._symbol
 
-    def make_exponent(self):
+    def make_exponent(self) -> None:
+        """Apply an exponential function to the current symbol."""
         prob = uniform(0, 1)
-        if prob < self.config['p_exponent']:
+        if prob < self.config.p_exponent:
             self._symbol = sp.exp(self._symbol)
         else:
-            a = randint(*self.config['exp_range'])
+            a = randint(*self.config.exp_range)
             self._symbol = a ** self._symbol
 
-    def make_log(self):
+    def make_log(self) -> None:
+        """Apply a logarithmic function to the current symbol."""
         prob = uniform(0, 1)
-        if prob < self.config['p_log']:
+        if prob < self.config.p_log:
             self._symbol = sp.ln(self._symbol)
         else:
-            a = randint(*self.config['log_base_range'])
+            a = randint(*self.config.log_base_range)
             self._symbol = sp.log(self._symbol, a)
 
-    def make_root(self):
+    def make_root(self) -> None:
+        """Apply a root function to the current symbol."""
         prob = uniform(0, 1)
-        if prob < self.config['p_root']:
+        if prob < self.config.p_root:
             self._symbol = sp.sqrt(self._symbol)
         else:
-            a = randint(*self.config['root_degree_range'])
+            a = randint(*self.config.root_degree_range)
             self._symbol = self._symbol ** sp.Rational(1, a)
 
-    def make_reciprocal(self):
+    def make_reciprocal(self) -> None:
+        """Apply a reciprocal function to the current symbol."""
         self._symbol = 1 / self._symbol
 
-    def get_element(self):
-        simple_functions = self.config['function_choice']
-        choice(simple_functions)()
-        a = randint(*self.config['coeff_range'])
-        b = randint(*self.config['power_range'])
+    def get_element(self) -> sp.Expr:
+        """Generate a single element of the expression."""
+        choice(self.config.function_choice)()
+        a = randint(*self.config.coeff_range)
+        b = randint(*self.config.power_range)
         return a * self._symbol ** b
 
-    def get_composition(self):
+    def get_composition(self) -> sp.Expr:
+        """Generate a composition of functions."""
         self.get_element()
         self.get_element()
         return self._symbol
 
-    def get_expression(self, length_range: tuple[int, int]):
-        a = randint(*length_range)
-        problem = 0
-        for _ in range(a):
+    def get_expression(self, length_range: tuple[int, int]) -> sp.Expr:
+        """Generate a complete expression with the specified length range."""
+        length = randint(*length_range)
+        problem = sp.Integer(0)
+        
+        for _ in range(length):
             self._symbol = self.symbol
             prob = uniform(0, 1)
-            if prob < self.config['p_compose']:
+            if prob < self.config.p_compose:
                 problem += self.get_composition()
             else:
                 problem += self.get_element()
             problem += self._symbol
+            
         self._symbol = self.symbol
         return problem

@@ -1,22 +1,50 @@
 from multiprocessing import Queue, Process
+from typing import Tuple, List, Optional, Union, Dict
+import logging
+import os
+import numpy as np
 
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import sympy as sp
-import numpy as np
 
-from src.generator import ExpressionGenerator
+from .generator import ExpressionGenerator
+from .config import VolumeConfig
+
+logger = logging.getLogger(__name__)
 
 class Volumes:
-    def __init__(self, filename):
+    def __init__(self, filename: str, config: Optional[VolumeConfig] = None):
         self.filename = filename
         self.x = sp.Symbol('x')
+        self.config = config or VolumeConfig()
         self.exp_gen = ExpressionGenerator(self.x)
         self.image_index = 0
-        self.a, self.b = None, None
+        self.a: Optional[float] = None
+        self.b: Optional[float] = None
+        
+        # Pre-create figure with standard settings
+        self.fig, self.ax = plt.subplots(figsize=self.config.figure_size)
+        self._setup_plot_style()
+        
+        # Create output directory once
+        os.makedirs('output', exist_ok=True)
+        
+        # Cache for x values to avoid regeneration
+        self._x_cache: Dict[Tuple[int, int], np.ndarray] = {}
 
-    def get_problem_pairs(self, n, difficulty, x_range):
+    def _setup_plot_style(self) -> None:
+        """Setup standard plot styling to avoid repeated calls."""
+        self.ax.grid(True, which='both', linestyle="--", linewidth=0.5)
+        self.ax.set_xlabel("$x$", fontsize=14)
+        self.ax.set_ylabel("$f(x)$", fontsize=14)
+        self.ax.set_title("Graph of the Function", fontsize=16)
+        self.ax.axhline(0, color='black', linewidth=1)
+        self.ax.axvline(0, color='black', linewidth=1)
+
+    def get_problem_pairs(self, n: int, difficulty: str, x_range: Tuple[int, int]) -> Tuple[List[sp.Expr], List[sp.Expr]]:
+        """Generate n pairs of problems and their answers."""
         problems = []
         answers = []
         for _ in range(n):
@@ -25,33 +53,35 @@ class Volumes:
             answers.append(ans)
         return problems, answers
 
-    def _try_integrate(self, expr, var, queue):
+    def _try_integrate(self, expr: sp.Expr, var: sp.Symbol, queue: Queue) -> None:
+        """Attempt to integrate the expression in a separate process."""
         try:
             result = sp.integrate(expr, var)
             queue.put(result)
         except Exception as e:
             queue.put(e)
 
-    def _integrate_with_timeout(self, expr, var, timeout=3):
+    def _integrate_with_timeout(self, expr: sp.Expr, var: sp.Symbol, timeout: int = 3) -> Union[sp.Expr, int]:
+        """Integrate with timeout protection."""
         queue = Queue()
         p = Process(target=self._try_integrate, args=(expr, var, queue))
         p.start()
         p.join(timeout)
+        
         if p.is_alive():
             p.terminate()
             p.join()
             return -1
-        else:
-            result = queue.get()
-            return result if not isinstance(result, Exception) else -1
+        
+        result = queue.get()
+        return result if not isinstance(result, Exception) else -1
 
-    def get_problem_pair(self, difficulty, x_range):
-        max_attempts = 20
-        for _ in range(max_attempts):
+    def get_problem_pair(self, difficulty: str, x_range: Tuple[int, int]) -> Tuple[sp.Expr, sp.Expr]:
+        """Generate a single problem-answer pair."""
+        for _ in range(self.config.max_attempts):
             p = sp.simplify(self._get_problem(x_range, difficulty))
             integral_result = self._integrate_with_timeout(p, (self.x, self.a, self.b))
 
-            # Check for failed integration
             if integral_result == -1 or isinstance(integral_result, Exception):
                 self.image_index -= 1
                 continue
@@ -60,7 +90,6 @@ class Volumes:
             self.a, self.b = None, None
             simpl = sp.expand(sp.simplify(ans))
 
-            # Check for invalid answer
             if ans == sp.nan or len(simpl.as_ordered_terms()) > 2:
                 self.image_index -= 1
                 continue
@@ -69,9 +98,36 @@ class Volumes:
 
         raise RuntimeError("Failed to generate valid problem after multiple attempts")
 
-    def _get_problem(self, x_range, difficulty='simple', debug=False):
+    def _get_x_values(self, x_range: Tuple[int, int]) -> np.ndarray:
+        """Get or create cached x values for the given range."""
+        if x_range not in self._x_cache:
+            self._x_cache[x_range] = np.linspace(x_range[0], x_range[1], self.config.plot_points)
+        return self._x_cache[x_range]
+
+    def _get_problem(self, x_range: Tuple[int, int], difficulty: str = 'simple', debug: bool = False) -> Optional[sp.Expr]:
+        """Generate a problem based on difficulty level."""
+        config = self._get_difficulty_config(difficulty)
+        if config is None:
+            logger.error(f'Unknown difficulty: {difficulty}')
+            return None
+
+        self.exp_gen.update_config(config)
+        p = self.exp_gen.get_expression((1, 1) if difficulty == 'simple' else (2, 2))
+        p = sp.diff(p, self.x)
+
+        try:
+            self._create_graph(p, x_range)
+        except Exception as e:
+            if debug:
+                logger.error(f'Failed to render equation: {str(e)}')
+            return self._get_problem(x_range, difficulty)
+
+        return p
+
+    def _get_difficulty_config(self, difficulty: str) -> Optional[dict]:
+        """Get configuration based on difficulty level."""
         if difficulty == 'simple':
-            config = {
+            return {
                 'power_range': (1, 3),
                 'p_trig': (0.5, 0.9, 0, 1),
                 'p_compose': 0,
@@ -80,12 +136,10 @@ class Volumes:
                     self.exp_gen.make_exponent,
                     self.exp_gen.make_log,
                     self.exp_gen.make_root,
-                    self.exp_gen.make_trig,
-            ]}
-            self.exp_gen.update_config(config)
-            p = self.exp_gen.get_expression((1, 1))
+                ]
+            }
         elif difficulty == 'hard':
-            config = {
+            return {
                 'power_range': (1, 3),
                 'p_trig': (0.5, 0.9, 0, 1),
                 'p_compose': 0,
@@ -96,92 +150,72 @@ class Volumes:
                     self.exp_gen.make_root,
                     self.exp_gen.make_reciprocal,
                     self.exp_gen.make_trig,
-                ]}
-            self.exp_gen.update_config(config)
-            p = self.exp_gen.get_expression((2, 2))
+                ]
+            }
         elif difficulty == 'extreme':
-            config = self.exp_gen.DEFAULT_CONFIG
-            config['p_trig'] = (0.5, 0.9, 0, 1)
-            config['function_choice'] = self.exp_gen.default_functions
-            self.exp_gen.update_config(config)
-            p = self.exp_gen.get_expression((2, 3))
-        else:
-            print('Unknown difficulty')
-            return None
-        p = sp.diff(p, self.x)
-        try:
-            self._create_graph(p, x_range)
-        except Exception as e:
-            if debug:
-                print(f'Failed to render equation: {str(e)}')
-            plt.close('all')
-            return self._get_problem(x_range, difficulty)
-        return p
+            return {
+                'p_trig': (0.5, 0.9, 0, 1),
+                'function_choice': self.exp_gen.config.function_choice
+            }
+        return None
 
-
-    def _create_graph(self, f, x_range, debug=False):
-        ab_range = (1, 15)
+    def _create_graph(self, f: sp.Expr, x_range: Tuple[int, int], debug: bool = False) -> None:
+        """Create and save a graph of the function."""
+        # Get cached x values
+        x_vals = self._get_x_values(x_range)
+        
         # Convert the symbolic function to a numerical function
         f_lambdified = sp.lambdify(self.x, f, 'numpy')
 
-        # Generate x values
-        x_vals = np.linspace(x_range[0], x_range[1], 2000)
-        with np.errstate(divide='ignore', invalid='ignore'):  # Suppress warnings
+        # Calculate y values with error handling
+        with np.errstate(divide='ignore', invalid='ignore'):
             y_vals = f_lambdified(x_vals)
 
-        mask = np.isfinite(y_vals)  # Keep only finite values
-        x_vals = x_vals[mask]
-        y_vals = y_vals[mask]
+        # Efficient filtering using boolean indexing
+        mask = np.isfinite(y_vals) & (np.abs(y_vals) <= self.config.threshold)
+        x_filtered = x_vals[mask]
+        y_filtered = y_vals[mask]
 
-        threshold = 10 ** 2  # Adjust based on function scale
-        mask = np.abs(y_vals) > threshold  # Mask large values
-        x_vals = x_vals[~mask]  # Remove corresponding x values
-        y_vals = y_vals[~mask]  # Remove corresponding y values
-
-        try:
-            x_range = max(ab_range[0], np.min(x_vals)), min(ab_range[1], np.max(x_vals))
-        except ValueError:
+        if len(x_filtered) == 0:
             if debug:
-                print(f'{x_vals=}')
-            raise
+                logger.error(f'Invalid x values: {x_vals}')
+            raise ValueError("No valid points to plot")
 
+        # Calculate boundaries
+        self._calculate_boundaries((np.min(x_filtered), np.max(x_filtered)))
 
-        # Create Boundaries
-        if np.ceil(x_range[0]) >= x_range[1] / 2 + 1:
-            a = np.ceil(x_range[0])
-        else:
-            a = np.random.randint(np.ceil(x_range[0]), x_range[1] / 2 + 1)
-        if np.ceil(x_range[1]) <= a + 1:
-            b = np.ceil(x_range[1])
-        else:
-            b = np.random.randint(a+1, np.ceil(x_range[1]))
+        # Update plot
+        self._update_plot(f, x_filtered, y_filtered)
 
-        self.a, self.b = a, b
+    def _calculate_boundaries(self, x_range: Tuple[float, float]) -> None:
+        """Calculate the integration boundaries."""
+        x_min, x_max = x_range
+        mid_point = (x_max + x_min) / 2
+        
+        # More efficient boundary calculation
+        self.a = np.clip(np.ceil(x_min), x_min, mid_point)
+        self.b = np.clip(self.a + 1, self.a + 1, np.ceil(x_max))
 
-        # Create a figure
-        plt.figure(figsize=(8, 6))
-
-        # Plot the function
-        plt.plot(x_vals, y_vals, label=f"${sp.latex(f)}$", linewidth=2, color="b")
-
-        # Enhance plot appearance
-        plt.xlabel("$x$", fontsize=14)
-        plt.ylabel("$f(x)$", fontsize=14)
-        plt.title("Graph of the Function", fontsize=16)
-        plt.axhline(0, color='black', linewidth=1)  # x-axis
-        plt.axvline(0, color='black', linewidth=1)  # y-axis
-        plt.axvline(a, color='r', linestyle='--', linewidth=2, label=f"$x = {a}$")
-        plt.axvline(b, color='g', linestyle='--', linewidth=2, label=f"$x = {b}$")
-        plt.grid(True, which='both', linestyle="--", linewidth=0.5)
-        plt.legend(fontsize=14)
-
-        # Save the plot as an image file (e.g., 'function_graph.png')
-        plt.savefig(f'./output/{self.filename}_{self.image_index}.jpg',
-                    format='jpg', bbox_inches='tight')
+    def _update_plot(self, f: sp.Expr, x_vals: np.ndarray, y_vals: np.ndarray) -> None:
+        """Update the plot with new data."""
+        # Clear previous plot content while keeping the style
+        self.ax.clear()
+        self._setup_plot_style()
+        
+        # Plot new data
+        self.ax.plot(x_vals, y_vals, label=f"${sp.latex(f)}$", linewidth=2, color="b")
+        self.ax.axvline(self.a, color='r', linestyle='--', linewidth=2, label=f"$x = {self.a}$")
+        self.ax.axvline(self.b, color='g', linestyle='--', linewidth=2, label=f"$x = {self.b}$")
+        self.ax.legend(fontsize=14)
+        
+        # Save plot
+        self.fig.savefig(f'./output/{self.filename}_{self.image_index}.jpg',
+                        format='jpg', bbox_inches='tight')
         self.image_index += 1
 
-        # Close the plot
-        plt.close()
+    def __del__(self):
+        """Cleanup matplotlib resources."""
+        plt.close(self.fig)
 
 if __name__ == "__main__":
     vols = Volumes('templates/volumes.xml')

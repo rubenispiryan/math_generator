@@ -1,6 +1,7 @@
 from typing import List, Tuple, Optional
 import random
 import logging
+from src.config import log_exceptions
 
 logger = logging.getLogger(__name__)
 
@@ -18,12 +19,17 @@ class Game2x2:
         self.p1 = player1
         self.p2 = player2
         self.matrix = self._generate_random_matrix()
+        logger.debug(f"Initialized Game2x2 instance with players {player1} and {player2}")
 
+    @log_exceptions(logger)
     def _generate_random_matrix(self) -> List[List[Tuple[int, int]]]:
         """Generate a random payoff matrix."""
-        return [[(random.randint(0, 10), random.randint(0, 10))
+        matrix = [[(random.randint(0, 10), random.randint(0, 10))
                 for _ in range(2)] for _ in range(2)]
+        logger.debug(f"Generated random payoff matrix: {matrix}")
+        return matrix
 
+    @log_exceptions(logger)
     def _pure_nash_equilibria(self) -> List[Tuple[int, int]]:
         """
         Find pure strategy Nash equilibria.
@@ -33,8 +39,11 @@ class Game2x2:
         """
         p1_br = self._find_best_responses(0)  # Player 1's best responses
         p2_br = self._find_best_responses(1)  # Player 2's best responses
-        return list(set(p1_br) & set(p2_br))
+        equilibria = list(set(p1_br) & set(p2_br))
+        logger.debug(f"Found pure Nash equilibria: {equilibria}")
+        return equilibria
 
+    @log_exceptions(logger)
     def _find_best_responses(self, player: int) -> List[Tuple[int, int]]:
         """
         Find best responses for a given player.
@@ -63,9 +72,11 @@ class Game2x2:
                 for j in range(2):
                     if self.matrix[i][j][1] == max_val:
                         best_responses.append((i, j))
-                        
+        
+        logger.debug(f"Found best responses for player {player}: {best_responses}")
         return best_responses
 
+    @log_exceptions(logger)
     def _indifference_probabilities(self) -> Tuple[Optional[float], Optional[float]]:
         """
         Calculate indifference probabilities for mixed strategy Nash equilibrium.
@@ -87,8 +98,10 @@ class Game2x2:
         q = (A[1][1][1] - A[1][0][1]) / denominator if denominator != 0 else None
         q = round(q, 2) if q is not None else None
 
+        logger.debug(f"Calculated indifference probabilities: q={q}, p={p}")
         return q, p
 
+    @log_exceptions(logger)
     def _mixed_strategy_nash(self) -> Optional[Tuple[Tuple[float, float], Tuple[float, float]]]:
         """
         Calculate mixed strategy Nash equilibrium.
@@ -100,10 +113,14 @@ class Game2x2:
         q, p = self._indifference_probabilities()
         
         if p is None or q is None or not (0 <= p <= 1 and 0 <= q <= 1):
+            logger.debug("No valid mixed strategy equilibrium found")
             return None
             
-        return (p, round(1 - p, 2)), (q, round(1 - q, 2))
+        result = (p, round(1 - p, 2)), (q, round(1 - q, 2))
+        logger.debug(f"Found mixed strategy Nash equilibrium: {result}")
+        return result
 
+    @log_exceptions(logger)
     def get_pure_nash_equilibria(self) -> List[Tuple[int, int]]:
         """
         Get pure strategy Nash equilibria with their payoffs.
@@ -113,10 +130,14 @@ class Game2x2:
         """
         answers = self._pure_nash_equilibria()
         if not answers:
+            logger.debug("No pure Nash equilibria found")
             return []
             
-        return [self.matrix[ans[0]][ans[1]] for ans in answers]
+        result = [self.matrix[ans[0]][ans[1]] for ans in answers]
+        logger.debug(f"Pure Nash equilibria payoffs: {result}")
+        return result
 
+    @log_exceptions(logger)
     def get_mixed_strategy_nash(self) -> Optional[str]:
         """
         Get mixed strategy Nash equilibrium in a readable format.
@@ -127,9 +148,12 @@ class Game2x2:
         """
         answers = self._mixed_strategy_nash()
         if answers is None:
+            logger.debug("No mixed strategy Nash equilibrium found")
             return None
             
-        return f'Probabilities for {self.p1}: {answers[0]}, {self.p2}: {answers[1]}'
+        result = f'Probabilities for {self.p1}: {answers[0]}, {self.p2}: {answers[1]}'
+        logger.debug(f"Mixed strategy Nash equilibrium: {result}")
+        return result
 
     def show(self) -> None:
         """Display the game matrix."""

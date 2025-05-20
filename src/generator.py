@@ -1,31 +1,40 @@
-from typing import List, Callable, Optional, Union
+from typing import List, Callable, Optional, Union, Tuple
 import sympy as sp
+import numpy as np
+import logging
 from random import uniform, randint, choice
-from .config import GeneratorConfig
+from .config import GeneratorConfig, log_exceptions
+
+logger = logging.getLogger(__name__)
 
 class ExpressionGenerator:
     def __init__(self, symbol: sp.Symbol, config: Optional[GeneratorConfig] = None):
         self._symbol = symbol
         self.symbol = symbol
         self.config = config or GeneratorConfig()
-        
+        logger.debug("Initialized ExpressionGenerator")
+
         # Initialize default functions if not provided
         if not self.config.function_choice:
             self.config.function_choice = [
-                self.make_poly,
-                self.make_exponent,
-                self.make_log,
-                self.make_root,
-                self.make_reciprocal,
-                self.make_trig,
-                self.make_hyper_trig,
-            ]
+            self.make_poly,
+            self.make_exponent,
+            self.make_log,
+            self.make_root,
+            self.make_reciprocal,
+            self.make_trig,
+            self.make_hyper_trig,
+        ]
 
+    @log_exceptions(logger)
     def update_config(self, new_config: dict) -> None:
         """Update the generator configuration with new values."""
+        logger.debug(f"Updating config with: {new_config}")
         for key, value in new_config.items():
             if hasattr(self.config, key):
                 setattr(self.config, key, value)
+            else:
+                logger.warning(f"Unknown config parameter: {key}")
 
     def make_trig(self) -> None:
         """Apply a trigonometric function to the current symbol."""
@@ -101,8 +110,10 @@ class ExpressionGenerator:
         self.get_element()
         return self._symbol
 
+    @log_exceptions(logger)
     def get_expression(self, length_range: tuple[int, int]) -> sp.Expr:
         """Generate a complete expression with the specified length range."""
+        logger.debug(f"Generating expression with length range: {length_range}")
         length = randint(*length_range)
         problem = sp.Integer(0)
         

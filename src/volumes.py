@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import sympy as sp
 
 from .generator import ExpressionGenerator
-from .config import VolumeConfig
+from .config import VolumeConfig, log_exceptions
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,8 @@ class Volumes:
         self.a: Optional[float] = None
         self.b: Optional[float] = None
         
+        logger.debug(f"Initializing Volumes with filename: {filename}")
+        
         # Pre-create figure with standard settings
         self.fig, self.ax = plt.subplots(figsize=self.config.figure_size)
         self._setup_plot_style()
@@ -33,6 +35,7 @@ class Volumes:
         
         # Cache for x values to avoid regeneration
         self._x_cache: Dict[Tuple[int, int], np.ndarray] = {}
+        logger.info("Volumes instance initialized successfully")
 
     def _setup_plot_style(self) -> None:
         """Setup standard plot styling to avoid repeated calls."""
@@ -43,14 +46,21 @@ class Volumes:
         self.ax.axhline(0, color='black', linewidth=1)
         self.ax.axvline(0, color='black', linewidth=1)
 
+    @log_exceptions(logger)
     def get_problem_pairs(self, n: int, difficulty: str, x_range: Tuple[int, int]) -> Tuple[List[sp.Expr], List[sp.Expr]]:
         """Generate n pairs of problems and their answers."""
+        logger.info(f"Generating {n} problem pairs with difficulty: {difficulty}")
         problems = []
         answers = []
-        for _ in range(n):
-            p, ans = self.get_problem_pair(difficulty, x_range)
-            problems.append(p)
-            answers.append(ans)
+        for i in range(n):
+            logger.debug(f"Generating problem pair {i+1}/{n}")
+            try:
+                p, ans = self.get_problem_pair(difficulty, x_range)
+                problems.append(p)
+                answers.append(ans)
+            except Exception as e:
+                logger.error(f"Failed to generate problem pair {i+1}: {str(e)}")
+                raise
         return problems, answers
 
     def _try_integrate(self, expr: sp.Expr, var: sp.Symbol, queue: Queue) -> None:
@@ -76,13 +86,17 @@ class Volumes:
         result = queue.get()
         return result if not isinstance(result, Exception) else -1
 
+    @log_exceptions(logger)
     def get_problem_pair(self, difficulty: str, x_range: Tuple[int, int]) -> Tuple[sp.Expr, sp.Expr]:
         """Generate a single problem-answer pair."""
-        for _ in range(self.config.max_attempts):
+        logger.debug(f"Generating problem pair with difficulty {difficulty}")
+        for attempt in range(self.config.max_attempts):
+            logger.debug(f"Attempt {attempt + 1}/{self.config.max_attempts}")
             p = sp.simplify(self._get_problem(x_range, difficulty))
             integral_result = self._integrate_with_timeout(p, (self.x, self.a, self.b))
 
             if integral_result == -1 or isinstance(integral_result, Exception):
+                logger.debug("Integration failed or timed out")
                 self.image_index -= 1
                 continue
 
@@ -91,16 +105,22 @@ class Volumes:
             simpl = sp.expand(sp.simplify(ans))
 
             if ans == sp.nan or len(simpl.as_ordered_terms()) > 2:
+                logger.debug("Invalid answer or too complex")
                 self.image_index -= 1
                 continue
 
+            logger.debug("Successfully generated problem pair")
             return p, sp.simplify(ans)
 
-        raise RuntimeError("Failed to generate valid problem after multiple attempts")
+        error_msg = "Failed to generate valid problem after multiple attempts"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg)
 
+    @log_exceptions(logger)
     def _get_x_values(self, x_range: Tuple[int, int]) -> np.ndarray:
         """Get or create cached x values for the given range."""
         if x_range not in self._x_cache:
+            logger.debug(f"Creating new x values cache for range {x_range}")
             self._x_cache[x_range] = np.linspace(x_range[0], x_range[1], self.config.plot_points)
         return self._x_cache[x_range]
 

@@ -106,8 +106,18 @@ the second `page` is the page of answers.
 - `volumes` - Generates `n` curves with graphs and their rotational volume as answers.
 - `taylor` - Generates `n` functions with their 2-Taylor expansions around 1 as answers.
 - `nash` - Generates 1 `2x2` table with a game theory problem, with pure and mixed nash equilibrium answers.
+- `horizontal_tangent` - Generates `n` functions and finds all x-values where the tangent line is horizontal.
 
-### 6. Benchmark Usage
+### 6. Logging
+
+The application includes comprehensive logging functionality to help with debugging and monitoring:
+
+- Logs are written to both console and file
+- Different log levels (DEBUG, INFO, WARNING, ERROR) are supported
+- Exception logging is automatically handled through decorators
+- Log files are stored in the `logs` directory
+
+### 7. Benchmark Usage
 
 #### Usage
 

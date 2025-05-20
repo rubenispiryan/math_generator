@@ -18,7 +18,6 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
-from sys import stderr
 import qrcode
 from sympy import Basic, latex
 import matplotlib.pyplot as plt
@@ -27,7 +26,8 @@ from src.derivatives import Derivative
 from src.game_theory import Game2x2
 from src.taylor import TaylorSeries
 from src.volumes import Volumes
-from src.config import PDFConfig
+from src.config import PDFConfig, setup_logging, LogConfig, log_exceptions
+from src.horizontal_tangent import HorizontalTangent
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,7 @@ class GridTypes(Enum):
     DERIVATIVE = 'derivatives'
     TAYLOR = 'taylor'
     NASH = 'nash'
+    HORIZONTAL_TANGENT = 'horizontal_tangent'
 
 class XMLTemplateParser:
     def __init__(self, xml_file: str):
@@ -171,9 +172,11 @@ class XMLTemplateParser:
         }
 
 class PDFGenerator:
+    @log_exceptions(logger)
     def __init__(self, template_file: str):
         self.c: Optional[canvas.Canvas] = None
         self.base_name = os.path.splitext(os.path.basename(template_file))[0]
+        logger.debug(f"Initializing PDFGenerator with template: {template_file}")
         self.parser = XMLTemplateParser(template_file)
         self.document = self.parser.parse_document()
         self.pages: Optional[List[Dict]] = self.document.get('pages')
@@ -190,9 +193,11 @@ class PDFGenerator:
                     answers.append(elem)
         return answers
 
+    @log_exceptions(logger)
     def generate_pdf(self, problems: List[Union[Basic, str]], answers: List[Union[Basic, str]]) -> None:
         """Generate the PDF with problems and answers."""
         output_path = self._get_output_path()
+        logger.info(f"Generating PDF at: {output_path}")
         self.c = canvas.Canvas(output_path)
         self.c.setPageSize(self.document['size'])
         self.c.setTitle(self.document['meta_title'])
@@ -203,6 +208,7 @@ class PDFGenerator:
                 self._process_answers_page(self.pages[1], answers)
         
         self.c.save()
+        logger.info("PDF generation completed successfully")
 
     def _get_output_path(self) -> str:
         """Get the output path for the PDF file."""
@@ -389,10 +395,10 @@ class PDFGenerator:
         max_image_height = cell_height - 20
 
         for i, item in enumerate(problems, start=1):
-            if isinstance(item, Basic):
-                buffer = self._render_expression(item)
-            elif isinstance(item, str):
+            if isinstance(item, str) and (item.endswith('.jpg') or item.endswith('.png')):
                 buffer = self._read_image(item)
+            elif isinstance(item, Basic) or isinstance(item, str):
+                buffer = self._render_expression(item)
             else:
                 raise ValueError('Item type not supported')
 
@@ -447,8 +453,10 @@ class PDFGenerator:
         plt.close(fig)
         return buffer
 
+    @log_exceptions(logger)
     def get_problem_pairs(self) -> Tuple[List, List]:
         """Get problem pairs based on grid type."""
+        logger.debug(f"Generating problems for grid type: {self.grid['grid_type']}")
         if self.grid['grid_type'] == GridTypes.VOLUME:
             vol = Volumes('volumes')
             return vol.get_problem_pairs(self.grid['n'], self.grid['difficulty'], self.grid['x_range'])
@@ -460,6 +468,9 @@ class PDFGenerator:
             return tay.get_problem_pairs(self.grid['n'], (1, 2), self.grid['a'])
         elif self.grid['grid_type'] == GridTypes.NASH:
             return [], []
+        elif self.grid['grid_type'] == GridTypes.HORIZONTAL_TANGENT:
+            ht = HorizontalTangent()
+            return ht.get_problem_pairs(self.grid['n'])
         else:
             logger.error(f'Invalid problem type: {self.grid["grid_type"]}')
             sys.exit(1)
@@ -468,17 +479,33 @@ class PDFGenerator:
         """Clean up temporary files."""
         subprocess.run('rm output/volumes_*.jpg 2>/dev/null', shell=True)
 
-if __name__ == "__main__":
+@log_exceptions(logger)
+def main():
+    """Main entry point for the PDF generator."""
+    # Setup logging
+    setup_logging(LogConfig(
+        console_level=logging.INFO,  # Show INFO and above in console
+        file_level=logging.DEBUG     # Log everything to file
+    ))
+    
     if len(sys.argv) != 2:
-        print(f"Usage: {sys.argv[0]} <problems-type>.xml")
+        logger.error(f"Usage: {sys.argv[0]} <problems-type>.xml")
         sys.exit(1)
         
     problem_template = sys.argv[1]
     if not problem_template.endswith('.xml'):
-        print(f"Usage: {sys.argv[0]} <problems-type>.xml")
+        logger.error(f"Usage: {sys.argv[0]} <problems-type>.xml")
         sys.exit(1)
         
-    generator = PDFGenerator(problem_template)
-    p, ans = generator.get_problem_pairs()
-    generator.generate_pdf(p, ans)
-    generator.clean()
+    try:
+        generator = PDFGenerator(problem_template)
+        p, ans = generator.get_problem_pairs()
+        generator.generate_pdf(p, ans)
+        generator.clean()
+        logger.info(f"Successfully generated PDF from template: {problem_template}")
+    except Exception as e:
+        logger.error(f"Failed to generate PDF: {str(e)}")
+        raise
+
+if __name__ == "__main__":
+    main()
